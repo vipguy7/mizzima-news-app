@@ -9,7 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import LivePlayer from '@/components/streaming/LivePlayer';
 import YouTubePlayer from '@/components/youtube/YouTubePlayer';
 import NewsReader from '@/components/news/NewsReader';
-import SocialFeed from '@/components/social/SocialFeed';
+import SocialFeed from '@/components/social/SocialFeed'; // Assuming this exists and is generic
+import ContinueWatchingList from '@/components/youtube/ContinueWatchingList'; // Import ContinueWatchingList
 import { 
   Tv2, 
   Youtube, 
@@ -28,6 +29,19 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('live');
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // State for the externally controlled YouTube player
+  const [controlledPlayerVideoId, setControlledPlayerVideoId] = useState<string | null>(null);
+  const [controlledPlayerStartSeconds, setControlledPlayerStartSeconds] = useState<number>(0);
+
+  const handleContinueWatchingSelect = (videoId: string, startSeconds: number) => {
+    setControlledPlayerVideoId(videoId);
+    setControlledPlayerStartSeconds(startSeconds);
+    // Optionally, switch to the 'youtube' tab if not already active,
+    // and ensure the player receiving these props is visible.
+    setActiveTab('youtube');
+    // Scroll to player? Or ensure it's in view. For now, just sets state.
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -148,14 +162,28 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="youtube" className="space-y-6">
+            {user && (
+              <ContinueWatchingList
+                onVideoSelect={handleContinueWatchingSelect}
+                maxItems={5}
+              />
+            )}
             <div className="grid gap-6 lg:grid-cols-2">
               <YouTubePlayer 
-                playlistId="PL1FfogmNIjcSbnZZ9-izjbZOsgF30tAZM"
+                playlistId="PL1FfogmNIjcSbnZZ9-izjbZOsgF30tAZM" // Mizzima Primetime - this will be controllable
                 title="The Mizzima Primetime"
+                externalVideoId={controlledPlayerVideoId}
+                externalStartSeconds={controlledPlayerStartSeconds}
+                onVideoSelect={() => {
+                  // When user clicks a video within this player's list,
+                  // we should clear the external control so it plays from its own list.
+                  if (controlledPlayerVideoId) setControlledPlayerVideoId(null);
+                }}
               />
               <YouTubePlayer 
-                playlistId="PL1FfogmNIjcTA-8U3nEisarLVyurdpP9w"
+                playlistId="PL1FfogmNIjcTA-8U3nEisarLVyurdpP9w" // Editorial Talk
                 title="Editorial Talk"
+                // This player is not controlled by ContinueWatchingList in this setup
               />
               <YouTubePlayer 
                 playlistId="PL1FfogmNIjcSl8mb5J2vyLWPJyxFZ7oom"
