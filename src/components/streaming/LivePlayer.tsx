@@ -1,4 +1,5 @@
 
+import Hls from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ const LivePlayer = ({
   isLive = true 
 }: LivePlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -25,17 +27,85 @@ const LivePlayer = ({
     const video = videoRef.current;
     if (!video) return;
 
-    // For RTMP streams, we'd typically use HLS.js here
-    // For now, using a fallback stream URL
-    video.src = streamUrl;
-    
-    return () => {
-      if (video) {
-        video.pause();
-        video.src = '';
+    const setupHlsPlayer = () => {
+      if (Hls.isSupported()) {
+        console.log("HLS.js is supported, setting up player for URL:", streamUrl);
+        const hls = new Hls({
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 5,
+          liveDurationInfinity: true,
+        });
+        hlsRef.current = hls;
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          console.log("HLS manifest parsed");
+          // Don't auto-play here, let user click play or manage via props
+        });
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            console.error(`HLS fatal error (${data.type}):`, data.details, data);
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                console.log('Attempting to recover network error...');
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                console.log('Attempting to recover media error...');
+                hls.recoverMediaError();
+                break;
+              default:
+                // Cannot recover, destroy HLS instance
+                console.error('Unrecoverable HLS error, destroying instance.');
+                hls.destroy();
+                hlsRef.current = null;
+                break;
+            }
+          } else {
+            console.warn(`HLS non-fatal error (${data.type}):`, data.details, data);
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        console.log("Native HLS playback is supported, setting src directly for URL:", streamUrl);
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', () => {
+          console.log("Native HLS metadata loaded");
+        });
+      } else {
+        console.error('HLS is not supported in this browser.');
+        // Potentially display an error message to the user
       }
     };
-  }, [streamUrl]);
+
+    if (streamUrl && (isLive || streamUrl.endsWith('.m3u8'))) {
+      setupHlsPlayer();
+    } else if (streamUrl) {
+      // For non-HLS, direct playback (e.g., MP4 VOD)
+      console.log("Setting up direct video source for:", streamUrl);
+      video.src = streamUrl;
+    }
+
+    // Event listeners for play/pause state, primarily for UI updates
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      if (hlsRef.current) {
+        console.log("Destroying HLS instance on cleanup");
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      if (video) {
+        video.removeEventListener('play', handlePlay);
+        video.removeEventListener('pause', handlePause);
+        video.pause();
+        video.removeAttribute('src'); // Clean up src
+        video.load(); // Reset video element state
+      }
+    };
+  }, [streamUrl, isLive]); // videoRef is stable
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -44,9 +114,13 @@ const LivePlayer = ({
     if (isPlaying) {
       video.pause();
     } else {
-      video.play();
+      video.play().catch(error => {
+        console.error("Error attempting to play video:", error);
+        // Handle play error, e.g., browser blocked autoplay
+        setIsPlaying(false); // Ensure UI reflects that playback didn't start
+      });
     }
-    setIsPlaying(!isPlaying);
+    // setIsPlaying will be set by the 'play'/'pause' event listeners
   };
 
   const toggleMute = () => {
