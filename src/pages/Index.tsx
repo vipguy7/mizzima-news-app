@@ -1,9 +1,12 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { 
   Play, 
   Search, 
@@ -14,12 +17,66 @@ import {
   Menu,
   Heart,
   Share2,
-  Download
+  Download,
+  Settings,
+  LogOut,
+  Crown
 } from "lucide-react";
+
+interface Profile {
+  full_name: string | null;
+  avatar_url: string | null;
+}
+
+interface Subscription {
+  subscription_tier: string;
+  subscribed: boolean;
+}
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("home");
   const [searchQuery, setSearchQuery] = useState("");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+      fetchSubscription();
+    }
+  }, [user]);
+
+  const fetchProfile = async () => {
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', user?.id)
+        .single();
+      
+      setProfile(data);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
+
+  const fetchSubscription = async () => {
+    try {
+      const { data } = await supabase
+        .from('subscribers')
+        .select('subscription_tier, subscribed')
+        .eq('user_id', user?.id)
+        .single();
+      
+      setSubscription(data);
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+    }
+  };
+
+  const isPremium = subscription?.subscription_tier === 'premium' && subscription?.subscribed;
 
   const featuredContent = [
     {
@@ -76,11 +133,40 @@ const Index = () => {
     }
   ];
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case "home":
         return (
           <div className="space-y-6 animate-fade-in-up">
+            {/* Premium Content Banner */}
+            {!isPremium && (
+              <Card className="bg-gradient-to-r from-primary/20 to-accent/20 border-primary/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Crown className="w-6 h-6 text-primary" />
+                      <div>
+                        <h3 className="font-semibold text-foreground">Unlock Premium Content</h3>
+                        <p className="text-sm text-muted-foreground">Get HD streaming, no ads, and exclusive content</p>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      onClick={() => navigate('/subscription')}
+                      className="bg-primary hover:bg-primary/90"
+                    >
+                      Upgrade
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Featured Content Carousel */}
             <section>
               <h2 className="text-xl font-bold mb-4 text-foreground">Featured</h2>
@@ -101,6 +187,12 @@ const Index = () => {
                           </Badge>
                         )}
                         <Badge variant="secondary">{featuredContent[0].category}</Badge>
+                        {isPremium && (
+                          <Badge className="bg-primary text-primary-foreground">
+                            <Crown className="w-3 h-3 mr-1" />
+                            Premium
+                          </Badge>
+                        )}
                       </div>
                       <h3 className="text-lg font-bold text-white mb-2">
                         {featuredContent[0].title}
@@ -144,9 +236,16 @@ const Index = () => {
                         </div>
                       </div>
                       <CardContent className="flex-1 p-3">
-                        <Badge variant="secondary" className="text-xs mb-1">
-                          {content.category}
-                        </Badge>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="secondary" className="text-xs">
+                            {content.category}
+                          </Badge>
+                          {!isPremium && (
+                            <Badge variant="outline" className="text-xs">
+                              Premium
+                            </Badge>
+                          )}
+                        </div>
                         <h3 className="font-semibold text-sm text-foreground line-clamp-2">
                           {content.title}
                         </h3>
@@ -194,16 +293,22 @@ const Index = () => {
                             <span className="text-sm text-muted-foreground">
                               {channel.viewers} viewers
                             </span>
+                            {!isPremium && channel.status === "LIVE" && (
+                              <Badge variant="outline" className="text-xs">
+                                Premium
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
                       <Button 
                         size="sm" 
-                        disabled={channel.status === "OFFLINE"}
+                        disabled={channel.status === "OFFLINE" || (!isPremium && channel.status === "LIVE")}
                         className="bg-primary hover:bg-primary/90"
+                        onClick={() => !isPremium && channel.status === "LIVE" ? navigate('/subscription') : null}
                       >
                         <Play className="w-4 h-4 mr-1" />
-                        Watch
+                        {!isPremium && channel.status === "LIVE" ? "Upgrade" : "Watch"}
                       </Button>
                     </div>
                   </CardContent>
@@ -222,13 +327,24 @@ const Index = () => {
                 <Card key={article.id} className="bg-card border-border hover:border-primary/50 transition-colors">
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start mb-2">
-                      <Badge variant="outline">{article.category}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{article.category}</Badge>
+                        {!isPremium && (
+                          <Badge variant="outline" className="text-xs">
+                            Premium
+                          </Badge>
+                        )}
+                      </div>
                       <span className="text-xs text-muted-foreground">{article.time}</span>
                     </div>
                     <h3 className="font-semibold text-foreground mb-2">{article.title}</h3>
                     <p className="text-sm text-muted-foreground mb-3">{article.summary}</p>
-                    <Button variant="outline" size="sm">
-                      Read More
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => !isPremium ? navigate('/subscription') : null}
+                    >
+                      {!isPremium ? "Upgrade to Read" : "Read More"}
                     </Button>
                   </CardContent>
                 </Card>
@@ -242,29 +358,80 @@ const Index = () => {
           <div className="space-y-6 animate-fade-in-up">
             <Card className="bg-card border-border">
               <CardContent className="p-6 text-center">
-                <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <User className="w-10 h-10 text-primary" />
+                <Avatar className="w-20 h-20 mx-auto mb-4">
+                  <AvatarImage src={profile?.avatar_url || ""} />
+                  <AvatarFallback className="bg-primary/20 text-primary text-xl">
+                    {profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <h2 className="text-xl font-bold text-foreground mb-1">
+                  {profile?.full_name || "User"}
+                </h2>
+                <p className="text-muted-foreground mb-2">{user?.email}</p>
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <Badge 
+                    variant={isPremium ? "default" : "secondary"}
+                    className={isPremium ? "bg-primary text-primary-foreground" : ""}
+                  >
+                    {isPremium && <Crown className="w-3 h-3 mr-1" />}
+                    {subscription?.subscription_tier?.charAt(0).toUpperCase() + 
+                     (subscription?.subscription_tier?.slice(1) || "Free")}
+                  </Badge>
                 </div>
-                <h2 className="text-xl font-bold text-foreground mb-2">Welcome User</h2>
-                <p className="text-muted-foreground mb-4">Enjoy unlimited streaming</p>
-                <Button className="bg-primary hover:bg-primary/90">
-                  Sign In
-                </Button>
+                {!isPremium && (
+                  <Button 
+                    className="bg-primary hover:bg-primary/90 mb-4"
+                    onClick={() => navigate('/subscription')}
+                  >
+                    <Crown className="w-4 h-4 mr-2" />
+                    Upgrade to Premium
+                  </Button>
+                )}
               </CardContent>
             </Card>
             
             <div className="grid gap-4">
               <Card className="bg-card border-border">
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-foreground mb-2">Downloads</h3>
-                  <p className="text-sm text-muted-foreground">Manage your offline content</p>
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start"
+                    onClick={() => navigate('/subscription')}
+                  >
+                    <Crown className="w-4 h-4 mr-3" />
+                    Subscription Plans
+                  </Button>
                 </CardContent>
               </Card>
               
               <Card className="bg-card border-border">
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-foreground mb-2">Settings</h3>
-                  <p className="text-sm text-muted-foreground">Customize your experience</p>
+                  <Button variant="ghost" className="w-full justify-start">
+                    <Download className="w-4 h-4 mr-3" />
+                    Downloads
+                  </Button>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-card border-border">
+                <CardContent className="p-4">
+                  <Button variant="ghost" className="w-full justify-start">
+                    <Settings className="w-4 h-4 mr-3" />
+                    Settings
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card border-border">
+                <CardContent className="p-4">
+                  <Button 
+                    variant="ghost" 
+                    className="w-full justify-start text-destructive hover:text-destructive"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="w-4 h-4 mr-3" />
+                    Sign Out
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -285,7 +452,12 @@ const Index = () => {
             <Button variant="ghost" size="sm" className="p-2">
               <Menu className="w-5 h-5" />
             </Button>
-            <h1 className="text-xl font-bold text-primary">Mizzima</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-primary">Mizzima</h1>
+              {isPremium && (
+                <Crown className="w-4 h-4 text-primary" />
+              )}
+            </div>
           </div>
           
           <div className="flex-1 max-w-md mx-4">
@@ -299,6 +471,13 @@ const Index = () => {
               />
             </div>
           </div>
+
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={profile?.avatar_url || ""} />
+            <AvatarFallback className="bg-primary/20 text-primary text-sm">
+              {profile?.full_name?.charAt(0) || user?.email?.charAt(0) || "U"}
+            </AvatarFallback>
+          </Avatar>
         </div>
       </header>
 
