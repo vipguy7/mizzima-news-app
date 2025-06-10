@@ -40,7 +40,12 @@ export const getWatchlistItems = async (): Promise<WatchlistItem[]> => {
     console.error('Error fetching watchlist items:', error);
     throw error;
   }
-  return data || [];
+  
+  // Type assertion to ensure item_type is properly typed
+  return (data || []).map(item => ({
+    ...item,
+    item_type: item.item_type as 'video' | 'article'
+  }));
 };
 
 /**
@@ -77,7 +82,12 @@ export const addToWatchlist = async (item: NewWatchlistItem): Promise<WatchlistI
     }
     throw error;
   }
-  return data;
+  
+  // Type assertion to ensure item_type is properly typed
+  return data ? {
+    ...data,
+    item_type: data.item_type as 'video' | 'article'
+  } : null;
 };
 
 /**
@@ -126,5 +136,10 @@ export const getWatchlistItem = async (item_id: string, item_type: 'video' | 'ar
     console.error('Error checking watchlist item:', error);
     return null;
   }
-  return data;
+  
+  // Type assertion to ensure item_type is properly typed
+  return data ? {
+    ...data,
+    item_type: data.item_type as 'video' | 'article'
+  } : null;
 };
