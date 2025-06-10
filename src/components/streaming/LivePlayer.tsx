@@ -13,7 +13,7 @@ interface LivePlayerProps {
 }
 
 const LivePlayer = ({ 
-  streamUrl = "https://manifest.googlevideo.com/api/manifest/hls_variant/expire/1640995200/ei/abc123/ip/0.0.0.0/id/abc123.1/source/yt_live_broadcast/requiressl/yes/hfr/1/playlist_duration/30/manifest_duration/30/gcr/us/vprv/1/go/1/keepalive/yes/c/WEB/txp/5532432/sparams/expire%2Cei%2Cip%2Cid%2Csource%2Crequiressl%2Chfr%2Cplaylist_duration%2Cmanifest_duration%2Cgcr%2Cvprv%2Cgo%2Ckeepalive/lsparams/hls_chunk_host%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Clsig/lsig/AG3C_xAwRQIhAKL8/playlist/index.m3u8",
+  streamUrl = "https://hls-stream.mizzima.com/live/Mizzima-Live2/index.m3u8", // Placeholder HLS URL - needs RTMP to HLS conversion
   title,
   isLive = true 
 }: LivePlayerProps) => {
@@ -22,70 +22,79 @@ const LivePlayer = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const setupHlsPlayer = () => {
+      // For now, we'll show a placeholder since RTMP needs server-side conversion
+      // In production, you'd need to set up RTMP to HLS conversion
+      console.log("Setting up Mizzima TV Live stream...");
+      console.log("Note: RTMP stream rtmp://52.77.246.163/live/Mizzima-Live2 requires server-side HLS conversion");
+      
       if (Hls.isSupported()) {
-        console.log("HLS.js is supported, setting up player for URL:", streamUrl);
         const hls = new Hls({
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: 5,
           liveDurationInfinity: true,
         });
         hlsRef.current = hls;
+        
+        // Try to load the stream URL
         hls.loadSource(streamUrl);
         hls.attachMedia(video);
+        
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          console.log("HLS manifest parsed");
-          // Don't auto-play here, let user click play or manage via props
+          console.log("HLS manifest parsed successfully");
+          setStreamError(null);
         });
+        
         hls.on(Hls.Events.ERROR, (event, data) => {
+          console.error(`HLS error (${data.type}):`, data.details, data);
+          
           if (data.fatal) {
-            console.error(`HLS fatal error (${data.type}):`, data.details, data);
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                console.log('Attempting to recover network error...');
+                console.log('Network error - attempting recovery...');
+                setStreamError('Network connection issue. Retrying...');
                 hls.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
-                console.log('Attempting to recover media error...');
+                console.log('Media error - attempting recovery...');
+                setStreamError('Media playback issue. Retrying...');
                 hls.recoverMediaError();
                 break;
               default:
-                // Cannot recover, destroy HLS instance
-                console.error('Unrecoverable HLS error, destroying instance.');
+                console.error('Unrecoverable HLS error');
+                setStreamError('Stream temporarily unavailable. Please try again later.');
                 hls.destroy();
                 hlsRef.current = null;
                 break;
             }
-          } else {
-            console.warn(`HLS non-fatal error (${data.type}):`, data.details, data);
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        console.log("Native HLS playback is supported, setting src directly for URL:", streamUrl);
+        console.log("Using native HLS playback");
         video.src = streamUrl;
         video.addEventListener('loadedmetadata', () => {
           console.log("Native HLS metadata loaded");
+          setStreamError(null);
+        });
+        video.addEventListener('error', () => {
+          setStreamError('Stream temporarily unavailable. Please try again later.');
         });
       } else {
-        console.error('HLS is not supported in this browser.');
-        // Potentially display an error message to the user
+        console.error('HLS is not supported in this browser');
+        setStreamError('Your browser does not support live streaming. Please use a modern browser.');
       }
     };
 
     if (streamUrl && (isLive || streamUrl.endsWith('.m3u8'))) {
       setupHlsPlayer();
-    } else if (streamUrl) {
-      // For non-HLS, direct playback (e.g., MP4 VOD)
-      console.log("Setting up direct video source for:", streamUrl);
-      video.src = streamUrl;
     }
 
-    // Event listeners for play/pause state, primarily for UI updates
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     video.addEventListener('play', handlePlay);
@@ -101,11 +110,11 @@ const LivePlayer = ({
         video.removeEventListener('play', handlePlay);
         video.removeEventListener('pause', handlePause);
         video.pause();
-        video.removeAttribute('src'); // Clean up src
-        video.load(); // Reset video element state
+        video.removeAttribute('src');
+        video.load();
       }
     };
-  }, [streamUrl, isLive]); // videoRef is stable
+  }, [streamUrl, isLive]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -116,11 +125,10 @@ const LivePlayer = ({
     } else {
       video.play().catch(error => {
         console.error("Error attempting to play video:", error);
-        // Handle play error, e.g., browser blocked autoplay
-        setIsPlaying(false); // Ensure UI reflects that playback didn't start
+        setStreamError('Unable to start playback. Please try again.');
+        setIsPlaying(false);
       });
     }
-    // setIsPlaying will be set by the 'play'/'pause' event listeners
   };
 
   const toggleMute = () => {
@@ -136,9 +144,9 @@ const LivePlayer = ({
     if (!video) return;
 
     if (!isFullscreen) {
-      video.requestFullscreen();
+      video.requestFullscreen().catch(console.error);
     } else {
-      document.exitFullscreen();
+      document.exitFullscreen().catch(console.error);
     }
     setIsFullscreen(!isFullscreen);
   };
@@ -153,6 +161,19 @@ const LivePlayer = ({
           controls={false}
           autoPlay={false}
         />
+        
+        {/* Error Overlay */}
+        {streamError && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
+            <div className="text-center text-white">
+              <div className="text-red-500 mb-2">⚠️ Stream Error</div>
+              <p className="text-sm">{streamError}</p>
+              <p className="text-xs mt-2 opacity-75">
+                Note: RTMP stream requires server-side HLS conversion for web playback
+              </p>
+            </div>
+          </div>
+        )}
         
         {/* Overlay Controls */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300">
@@ -191,6 +212,24 @@ const LivePlayer = ({
           </div>
         </div>
       </div>
+      
+      {/* Stream Info */}
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-foreground">{title}</h3>
+            <p className="text-sm text-muted-foreground">
+              {streamError ? 'Stream offline' : 'Broadcasting live from Myanmar'}
+            </p>
+          </div>
+          {isLive && !streamError && (
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-muted-foreground">LIVE</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 };
