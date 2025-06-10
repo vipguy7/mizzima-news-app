@@ -1,14 +1,14 @@
+
 import { supabase } from './client';
-import { AuthUser } from './types'; // Assuming AuthUser might be defined here or useAuth hook provides it
 
 export interface WatchlistItem {
-  id?: number; // Supabase ID, optional for new items
+  id?: number;
   user_id: string;
-  item_id: string; // e.g., YouTube video ID or NewsArticle URL/ID
+  item_id: string;
   item_type: 'video' | 'article';
   title?: string;
   thumbnail_url?: string;
-  source_url?: string; // Link to the original video or article page
+  source_url?: string;
   created_at?: string;
 }
 
@@ -53,7 +53,7 @@ export const addToWatchlist = async (item: NewWatchlistItem): Promise<WatchlistI
     throw new Error('User must be logged in to add items to watchlist.');
   }
 
-  const newItem: Omit<WatchlistItem, 'id' | 'created_at'> = {
+  const newItem = {
     user_id: user.id,
     item_id: item.item_id,
     item_type: item.item_type,
@@ -66,14 +66,12 @@ export const addToWatchlist = async (item: NewWatchlistItem): Promise<WatchlistI
     .from('watchlists')
     .insert([newItem])
     .select()
-    .single(); // Assuming you want the inserted item back and it's just one
+    .single();
 
   if (error) {
     console.error('Error adding to watchlist:', error);
-    // Handle potential unique constraint violation gracefully (item already exists)
-    if (error.code === '23505') { // Unique violation
+    if (error.code === '23505') {
       console.warn('Item already in watchlist.');
-      // Optionally, fetch and return the existing item
       const existingItems = await getWatchlistItem(item.item_id, item.item_type);
       return existingItems;
     }
@@ -113,7 +111,6 @@ export const removeFromWatchlist = async (item_id: string, item_type: 'video' | 
 export const getWatchlistItem = async (item_id: string, item_type: 'video' | 'article'): Promise<WatchlistItem | null> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    // console.log('isItemInWatchlist: No user logged in.');
     return null;
   }
 
@@ -123,11 +120,10 @@ export const getWatchlistItem = async (item_id: string, item_type: 'video' | 'ar
     .eq('user_id', user.id)
     .eq('item_id', item_id)
     .eq('item_type', item_type)
-    .maybeSingle(); // Returns one row or null, doesn't error if not found
+    .maybeSingle();
 
   if (error) {
     console.error('Error checking watchlist item:', error);
-    // Don't throw, just return null as item is not confirmed to be in watchlist
     return null;
   }
   return data;

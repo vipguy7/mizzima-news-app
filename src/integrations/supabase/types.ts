@@ -72,6 +72,75 @@ export type Database = {
         }
         Relationships: []
       }
+      video_progress: {
+        Row: {
+          created_at: string
+          id: number
+          last_watched_at: string
+          progress_seconds: number
+          thumbnail_url: string | null
+          title: string | null
+          total_duration_seconds: number
+          user_id: string
+          video_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          last_watched_at?: string
+          progress_seconds?: number
+          thumbnail_url?: string | null
+          title?: string | null
+          total_duration_seconds?: number
+          user_id: string
+          video_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          last_watched_at?: string
+          progress_seconds?: number
+          thumbnail_url?: string | null
+          title?: string | null
+          total_duration_seconds?: number
+          user_id?: string
+          video_id?: string
+        }
+        Relationships: []
+      }
+      watchlists: {
+        Row: {
+          created_at: string
+          id: number
+          item_id: string
+          item_type: string
+          source_url: string | null
+          thumbnail_url: string | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          item_id: string
+          item_type: string
+          source_url?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          item_id?: string
+          item_type?: string
+          source_url?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

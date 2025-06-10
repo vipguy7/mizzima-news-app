@@ -1,3 +1,4 @@
+
 import { supabase } from './client';
 
 export interface VideoProgress {
@@ -6,13 +7,18 @@ export interface VideoProgress {
   video_id: string;
   progress_seconds: number;
   total_duration_seconds: number;
+  title?: string;
+  thumbnail_url?: string;
   last_watched_at?: string;
+  created_at?: string;
 }
 
 export interface NewVideoProgress {
   video_id: string;
   progress_seconds: number;
   total_duration_seconds: number;
+  title?: string;
+  thumbnail_url?: string;
 }
 
 /**
@@ -26,12 +32,14 @@ export const saveVideoProgress = async (item: NewVideoProgress): Promise<VideoPr
     throw new Error('User must be logged in to save video progress.');
   }
 
-  const progressEntry: Omit<VideoProgress, 'id' | 'last_watched_at'> & { last_watched_at?: string } = {
+  const progressEntry = {
     user_id: user.id,
     video_id: item.video_id,
     progress_seconds: item.progress_seconds,
     total_duration_seconds: item.total_duration_seconds,
-    last_watched_at: new Date().toISOString(), // Explicitly set for upsert
+    title: item.title,
+    thumbnail_url: item.thumbnail_url,
+    last_watched_at: new Date().toISOString(),
   };
 
   const { data, error } = await supabase
@@ -53,7 +61,6 @@ export const saveVideoProgress = async (item: NewVideoProgress): Promise<VideoPr
 export const getVideoProgress = async (video_id: string): Promise<VideoProgress | null> => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    // console.log('getVideoProgress: No user logged in.');
     return null;
   }
 
@@ -66,7 +73,6 @@ export const getVideoProgress = async (video_id: string): Promise<VideoProgress 
 
   if (error) {
     console.error(`Error fetching progress for video ${video_id}:`, error);
-    // Don't throw, just return null as progress might not exist
     return null;
   }
   return data;
@@ -74,7 +80,6 @@ export const getVideoProgress = async (video_id: string): Promise<VideoProgress 
 
 /**
  * Fetches a list of videos the user has made progress on, ordered by last_watched_at DESC.
- * This version will just return progress data. We'd need video metadata separately.
  */
 export const getContinueWatchingList = async (limit: number = 5): Promise<VideoProgress[]> => {
   const { data: { user } } = await supabase.auth.getUser();
