@@ -1,42 +1,38 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play, Clock, BookmarkPlus, BookmarkCheck, Loader2 } from 'lucide-react'; // Added Bookmark icons and Loader
+import { Play, Clock, BookmarkPlus, BookmarkCheck, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
   WatchlistItem,
   NewWatchlistItem,
-  // getWatchlistItems, // Not used directly here
   addToWatchlist,
   removeFromWatchlist,
   getWatchlistItem
 } from '@/integrations/supabase/watchlistService';
 import {
-  VideoProgress, // For type hint
   getVideoProgress,
-  // saveVideoProgress, // Not saving progress from here in this subtask
 } from '@/integrations/supabase/videoProgressService';
 import { useToast } from '@/hooks/use-toast';
-
 
 interface YouTubeVideo {
   id: string;
   title: string;
   thumbnail: string;
-  duration?: string; // Made optional
+  duration?: string;
   publishedAt: string;
-  viewCount?: string; // Already optional
+  viewCount?: string;
 }
 
 interface YouTubePlayerProps {
-  playlistId: string; // Keep for default playlist loading
+  playlistId: string;
   title: string;
   maxResults?: number;
-  externalVideoId?: string | null; // New prop to play a specific video
-  externalStartSeconds?: number;   // New prop for starting time
-  onVideoSelect?: (videoId: string) => void; // Optional: To notify parent about internal selection
+  externalVideoId?: string | null;
+  externalStartSeconds?: number;
+  onVideoSelect?: (videoId: string) => void;
 }
 
 const YouTubePlayer = ({
@@ -56,28 +52,27 @@ const YouTubePlayer = ({
   const { toast } = useToast();
   const [watchlistStatus, setWatchlistStatus] = useState<Map<string, WatchlistItem | null>>(new Map());
   const [itemLoading, setItemLoading] = useState<Record<string, boolean>>({});
-  const [videoStartSeconds, setVideoStartSeconds] = useState(0); // For continue watching
+  const [videoStartSeconds, setVideoStartSeconds] = useState(0);
 
-  const VITE_YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+  const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
   // Fetch video data from playlist
   useEffect(() => {
-    // Only fetch playlist if no external video is initially provided
     if (externalVideoId) {
       setSelectedVideoId(externalVideoId);
       setVideoStartSeconds(externalStartSeconds);
-      setApiLoading(false); // No playlist to load
-      setVideos([]); // Clear any playlist videos
+      setApiLoading(false);
+      setVideos([]);
       return;
     }
 
-    if (!VITE_YOUTUBE_API_KEY) {
-      setError('YouTube API key is missing. Please set VITE_YOUTUBE_API_KEY environment variable.');
+    if (!YOUTUBE_API_KEY) {
+      setError('YouTube API key is missing. Please configure VITE_YOUTUBE_API_KEY.');
       setApiLoading(false);
       return;
     }
     if (!playlistId) {
-      setError('YouTube Playlist ID is missing for default playback.');
+      setError('YouTube Playlist ID is missing.');
       setApiLoading(false);
       return;
     }
@@ -86,19 +81,28 @@ const YouTubePlayer = ({
       setApiLoading(true);
       setError(null);
       try {
+        console.log(`Fetching YouTube playlist: ${playlistId}`);
         const response = await fetch(
-          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=${maxResults}&key=${VITE_YOUTUBE_API_KEY}`
+          `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
         );
+        
         if (!response.ok) {
           const errorData = await response.json();
           console.error('YouTube API Error:', errorData);
-          throw new Error(
-            errorData.error?.message || `Failed to fetch playlist data (status: ${response.status})`
-          );
+          
+          if (response.status === 403) {
+            throw new Error('YouTube API quota exceeded or invalid API key. Please check your API key.');
+          } else if (response.status === 404) {
+            throw new Error('Playlist not found. Please check the playlist ID.');
+          } else {
+            throw new Error(errorData.error?.message || `Failed to fetch playlist data (status: ${response.status})`);
+          }
         }
+        
         const data = await response.json();
+        console.log('YouTube API Response:', data);
 
-        if (!data.items) {
+        if (!data.items || data.items.length === 0) {
           console.warn('No items found in playlist:', data);
           setVideos([]);
           setApiLoading(false);
@@ -107,21 +111,28 @@ const YouTubePlayer = ({
 
         const fetchedVideos: YouTubeVideo[] = data.items
           .map((item: any) => {
-            if (!item.snippet?.resourceId?.videoId || !item.snippet?.thumbnails) {
-              console.warn('Skipping item due to missing videoId or thumbnails:', item);
+            if (!item.snippet?.resourceId?.videoId) {
+              console.warn('Skipping item due to missing videoId:', item);
               return null;
             }
             return {
               id: item.snippet.resourceId.videoId,
-              title: item.snippet.title,
-              thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url || 'https://via.placeholder.com/120x90.png?text=No+Thumbnail',
-              publishedAt: item.snippet.publishedAt || item.contentDetails?.videoPublishedAt, // Fallback to contentDetails if snippet.publishedAt is missing
-              // duration and viewCount are omitted as per requirements
+              title: item.snippet.title || 'Untitled Video',
+              thumbnail: item.snippet.thumbnails?.medium?.url || 
+                        item.snippet.thumbnails?.default?.url || 
+                        'https://via.placeholder.com/320x180.png?text=No+Thumbnail',
+              publishedAt: item.snippet.publishedAt || item.contentDetails?.videoPublishedAt || new Date().toISOString(),
             };
           })
-          .filter((video: YouTubeVideo | null): video is YouTubeVideo => video !== null); // Filter out nulls
+          .filter((video: YouTubeVideo | null): video is YouTubeVideo => video !== null);
 
+        console.log('Processed videos:', fetchedVideos);
         setVideos(fetchedVideos);
+        
+        // Auto-select first video if none selected
+        if (fetchedVideos.length > 0 && !selectedVideoId) {
+          setSelectedVideoId(fetchedVideos[0].id);
+        }
       } catch (err: any) {
         console.error('Error fetching YouTube videos:', err);
         setError(err.message || 'An unknown error occurred while fetching videos.');
@@ -131,22 +142,16 @@ const YouTubePlayer = ({
     };
 
     fetchVideos();
-  }, [playlistId, maxResults, VITE_YOUTUBE_API_KEY, externalVideoId]); // Re-run if externalVideoId changes and was initially null
+  }, [playlistId, maxResults, YOUTUBE_API_KEY, externalVideoId]);
 
   // Effect to handle external video ID changes
   useEffect(() => {
     if (externalVideoId) {
       setSelectedVideoId(externalVideoId);
       setVideoStartSeconds(externalStartSeconds);
-       // If externalVideoId is set, we might not need playlist videos,
-      // or we might want to load them in background. For now, it prioritizes external.
-      // Consider if playlist videos should still be shown or fetched.
-      // For simplicity here, if externalVideoId is provided, playlist is ignored.
-      // If you want to show playlist AND play external, more logic is needed.
-      setVideos([]); // Clear playlist videos if an external one is forced
-      setApiLoading(false); // Assume we don't need to load playlist
+      setVideos([]);
+      setApiLoading(false);
     }
-    // If externalVideoId becomes null, the playlist fetch effect should take over if playlistId is present.
   }, [externalVideoId, externalStartSeconds]);
 
   // Effect to fetch watchlist status for all loaded videos
@@ -158,24 +163,22 @@ const YouTubePlayer = ({
           newStatusMap.set(video.id, item);
         }).catch(err => {
           console.error(`Failed to get watchlist status for ${video.id}:`, err);
-          newStatusMap.set(video.id, null); // Assume not in watchlist on error
+          newStatusMap.set(video.id, null);
         })
       );
       Promise.all(promises).then(() => {
-        setWatchlistStatus(new Map(newStatusMap)); // Create new map instance to trigger re-render
+        setWatchlistStatus(new Map(newStatusMap));
       });
     } else if (!user) {
-      setWatchlistStatus(new Map()); // Clear status if user logs out
+      setWatchlistStatus(new Map());
     }
   }, [videos, user]);
 
-  // Effect to fetch video progress when a video is selected (either internal or external)
+  // Effect to fetch video progress when a video is selected
   useEffect(() => {
     if (selectedVideoId && user) {
       getVideoProgress(selectedVideoId)
         .then(progress => {
-          // Only set start seconds if it's not an externally forced start time
-          // or if the external start time is 0 (meaning, try to use saved progress)
           if (!externalVideoId || (externalVideoId === selectedVideoId && externalStartSeconds === 0)) {
             if (progress && progress.progress_seconds > 0) {
               setVideoStartSeconds(Math.round(progress.progress_seconds));
@@ -183,9 +186,9 @@ const YouTubePlayer = ({
               setVideoStartSeconds(0);
             }
           } else if (externalVideoId === selectedVideoId) {
-             setVideoStartSeconds(externalStartSeconds); // respect external start time
+             setVideoStartSeconds(externalStartSeconds);
           } else {
-            setVideoStartSeconds(0); // Default for other cases
+            setVideoStartSeconds(0);
           }
         })
         .catch(err => {
@@ -193,16 +196,14 @@ const YouTubePlayer = ({
           setVideoStartSeconds(externalVideoId === selectedVideoId ? externalStartSeconds : 0);
         });
     } else if (selectedVideoId && externalVideoId === selectedVideoId) {
-      // No user, but external start time is provided
       setVideoStartSeconds(externalStartSeconds);
-    }
-     else {
+    } else {
       setVideoStartSeconds(0);
     }
   }, [selectedVideoId, user, externalVideoId, externalStartSeconds]);
 
   const handleInternalVideoSelect = (video: YouTubeVideo) => {
-    setVideoStartSeconds(0); // Reset start time before fetching progress for new video
+    setVideoStartSeconds(0);
     setSelectedVideoId(video.id);
     if (onVideoSelect) {
       onVideoSelect(video.id);
@@ -251,11 +252,6 @@ const YouTubePlayer = ({
     }
   };
 
-  const formatDuration = (duration?: string) => {
-    if (!duration) return ''; // Handle optional duration
-    return duration;
-  };
-
   const formatPublishedDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -268,27 +264,30 @@ const YouTubePlayer = ({
     return `${Math.ceil(diffDays / 30)} months ago`;
   };
 
+  const retryFetch = () => {
+    setError(null);
+    setApiLoading(true);
+    // This will trigger the useEffect to refetch
+    window.location.reload();
+  };
+
   const selectedVideoDetails = selectedVideoId ? videos.find(v => v.id === selectedVideoId) : null;
   const iframeSrc = selectedVideoId
-    ? `https://www.youtube.com/embed/${selectedVideoId}?autoplay=1${videoStartSeconds > 0 ? `&start=${videoStartSeconds}` : ''}`
+    ? `https://www.youtube.com/embed/${selectedVideoId}?autoplay=1&rel=0&modestbranding=1${videoStartSeconds > 0 ? `&start=${videoStartSeconds}` : ''}`
     : "";
 
   if (apiLoading) {
     return (
       <Card className="bg-card border-border">
         <CardContent className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-muted rounded w-1/3"></div>
-            <div className="space-y-3">
-              {[...Array(maxResults)].map((_, i) => (
-                <div key={i} className="flex space-x-4">
-                  <div className="h-16 w-28 bg-muted rounded"></div>
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-muted rounded w-3/4"></div>
-                    <div className="h-3 bg-muted rounded w-1/2"></div>
-                  </div>
-                </div>
-              ))}
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+            <Badge variant="outline">YouTube</Badge>
+          </div>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Loading videos...</p>
             </div>
           </div>
         </CardContent>
@@ -304,9 +303,13 @@ const YouTubePlayer = ({
             <h3 className="text-lg font-semibold text-foreground">{title}</h3>
             <Badge variant="outline">YouTube</Badge>
           </div>
-          <div className="text-destructive text-center py-4">
-            <p>Error: {error}</p>
-            {error.includes("API key") && <p>Please ensure the VITE_YOUTUBE_API_KEY is correctly configured.</p>}
+          <div className="text-center py-8">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <p className="text-destructive mb-4">Error: {error}</p>
+            <Button onClick={retryFetch} variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -321,7 +324,7 @@ const YouTubePlayer = ({
             <h3 className="text-lg font-semibold text-foreground">{title}</h3>
             <Badge variant="outline">YouTube</Badge>
           </div>
-          <p className="text-muted-foreground text-center py-4">No videos found in this playlist or the playlist is empty.</p>
+          <p className="text-muted-foreground text-center py-4">No videos found in this playlist.</p>
         </CardContent>
       </Card>
     );
@@ -339,13 +342,13 @@ const YouTubePlayer = ({
           <div className="mb-6">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
               <iframe
-                key={selectedVideoId} // Force re-render of iframe when videoId changes, so `start` param applies
+                key={`${selectedVideoId}-${videoStartSeconds}`}
                 width="100%"
                 height="100%"
                 src={iframeSrc}
                 title="YouTube video player"
                 frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               ></iframe>
             </div>
@@ -353,53 +356,47 @@ const YouTubePlayer = ({
         )}
 
         <div className="space-y-3">
-          {/* The stray </div> that was here has been removed. */}
           {user && selectedVideoDetails && (
-            <div className="flex justify-center mb-2"> {/* Centering the button */}
+            <div className="flex justify-center mb-2">
               <Button
                 onClick={() => handleToggleWatchlist(selectedVideoDetails)}
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  disabled={authLoading || itemLoading[selectedVideoDetails.id]}
-                >
-                  {itemLoading[selectedVideoDetails.id] ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : watchlistStatus.get(selectedVideoDetails.id) ? (
-                    <BookmarkCheck className="w-4 h-4 mr-2 text-green-500" />
-                  ) : (
-                    <BookmarkPlus className="w-4 h-4 mr-2" />
-                  )}
-                  {watchlistStatus.get(selectedVideoDetails.id) ? 'Remove from Watchlist' : 'Add to Watchlist'}
-                </Button>
+                variant="outline"
+                size="sm"
+                className="mt-2"
+                disabled={authLoading || itemLoading[selectedVideoDetails.id]}
+              >
+                {itemLoading[selectedVideoDetails.id] ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : watchlistStatus.get(selectedVideoDetails.id) ? (
+                  <BookmarkCheck className="w-4 h-4 mr-2 text-green-500" />
+                ) : (
+                  <BookmarkPlus className="w-4 h-4 mr-2" />
+                )}
+                {watchlistStatus.get(selectedVideoDetails.id) ? 'Remove from Watchlist' : 'Add to Watchlist'}
+              </Button>
             </div>
           )}
-          {/* This is the correct start of the video list mapping */}
+
           {videos.slice(0, maxResults).map((video) => (
             <div key={video.id} className="p-3 rounded-lg hover:bg-muted/50 transition-colors">
               <div className="flex items-start space-x-3">
                 <div
-                  className="relative flex-shrink-0 w-28 h-16 rounded overflow-hidden cursor-pointer"
+                  className="relative flex-shrink-0 w-28 h-16 rounded overflow-hidden cursor-pointer group"
                   onClick={() => handleInternalVideoSelect(video)}
                 >
                   <img
                     src={video.thumbnail}
                     alt={video.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/50 transition-colors">
                     <Play className="w-4 h-4 text-white" />
                   </div>
-                  {video.duration && (
-                    <div className="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 rounded">
-                      {formatDuration(video.duration)}
-                    </div>
-                  )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <h4
-                    className="font-medium text-foreground line-clamp-2 text-sm cursor-pointer"
+                    className="font-medium text-foreground line-clamp-2 text-sm cursor-pointer hover:text-primary transition-colors"
                     onClick={() => handleInternalVideoSelect(video)}
                   >
                     {video.title}
