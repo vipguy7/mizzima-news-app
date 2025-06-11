@@ -13,7 +13,7 @@ interface LivePlayerProps {
 }
 
 const LivePlayer = ({ 
-  streamUrl = "https://manifest.googlevideo.com/api/manifest/hls_playlist/expire/1640995200/ei/dQnJYZiCOoaIhwbH6ZHQBA/ip/0.0.0.0/id/jfKfPfyJRdk.1/itag/96/aitags/140%2C298%2C299%2C140/source/yt_live_broadcast/requiressl/yes/ratebypass/yes/live/1/sgoap/gir%3Dyes%3Bitag%3D140/sgovp/gir%3Dyes%3Bitag%3D298/hls_chunk_host/rr2---sn-4g5e6nsr.googlevideo.com/playlist_duration/30/manifest_duration/30/gcr/us/vprv/1/playlist_type/DVR/initcwndbps/2050000/mh/7L/mm/44/mn/sn-4g5e6nsr/ms/lva/mv/m/mvi/2/pl/26/dover/11/keepalive/yes/fexp/24001373%2C24007246/beids/9466585/mt/1640973490/sparams/expire%2Cei%2Cip%2Cid%2Caitags%2Csource%2Crequiressl%2Cratebypass%2Clive%2Csgoap%2Csgovp%2Cplaylist_duration%2Cmanifest_duration%2Cgcr%2Cvprv%2Cplaylist_type/lsparams/hls_chunk_host%2Cinitcwndbps%2Cmh%2Cmm%2Cmn%2Cms%2Cmv%2Cmvi%2Cpl%2Clsig/lsig/AG3C_xAwRQIhALOqnrr_8xPjr8m7jC5GkJNWkQjFcr_2G8DZyUGH9t6TAiAT0kO_J6J2SkQK0K-xVFfwl_VHa2eEoGfVBg-1BfXSBw%3D%3D/playlist/index.m3u8",
+  streamUrl,
   title,
   isLive = true 
 }: LivePlayerProps) => {
@@ -23,11 +23,18 @@ const LivePlayer = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // For demo purposes, we'll show a placeholder when no valid stream URL is provided
+  const hasValidStream = streamUrl && !streamUrl.includes('googlevideo.com');
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !hasValidStream) {
+      setStreamError('No valid stream URL configured. Please configure a proper HLS stream URL.');
+      setIsLoading(false);
+      return;
+    }
 
     const setupHlsPlayer = () => {
       setIsLoading(true);
@@ -42,6 +49,10 @@ const LivePlayer = ({
           liveDurationInfinity: true,
           enableWorker: true,
           lowLatencyMode: true,
+          xhrSetup: function(xhr, url) {
+            // Add any custom headers if needed for CORS
+            xhr.setRequestHeader('Access-Control-Allow-Origin', '*');
+          }
         });
         hlsRef.current = hls;
         
@@ -61,12 +72,8 @@ const LivePlayer = ({
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 console.log('Network error - attempting recovery...');
-                setStreamError('Network connection issue. Retrying...');
-                setTimeout(() => {
-                  if (hlsRef.current) {
-                    hlsRef.current.startLoad();
-                  }
-                }, 3000);
+                setStreamError('Network connection issue. Please check the stream URL or try again later.');
+                setIsLoading(false);
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
                 console.log('Media error - attempting recovery...');
@@ -137,11 +144,11 @@ const LivePlayer = ({
         video.load();
       }
     };
-  }, [streamUrl, title]);
+  }, [streamUrl, title, hasValidStream]);
 
   const togglePlay = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !hasValidStream) return;
 
     if (isPlaying) {
       video.pause();
@@ -176,7 +183,7 @@ const LivePlayer = ({
 
   const retryStream = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !hasValidStream) return;
     
     setStreamError(null);
     setIsLoading(true);
@@ -193,17 +200,30 @@ const LivePlayer = ({
   return (
     <Card className="bg-card border-border overflow-hidden">
       <div className="relative aspect-video bg-black">
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          playsInline
-          controls={false}
-          autoPlay={false}
-          muted={isMuted}
-        />
+        {hasValidStream ? (
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            playsInline
+            controls={false}
+            autoPlay={false}
+            muted={isMuted}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800">
+            <div className="text-center text-white p-8">
+              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                <Play className="w-8 h-8 text-primary-foreground" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">{title}</h3>
+              <p className="text-gray-300 mb-4">Live stream will be available soon</p>
+              <Badge className="bg-yellow-600 text-yellow-100">Coming Soon</Badge>
+            </div>
+          </div>
+        )}
         
         {/* Loading Overlay */}
-        {isLoading && !streamError && (
+        {isLoading && !streamError && hasValidStream && (
           <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
             <div className="text-center text-white">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
@@ -213,7 +233,7 @@ const LivePlayer = ({
         )}
         
         {/* Error Overlay */}
-        {streamError && (
+        {streamError && hasValidStream && (
           <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
             <div className="text-center text-white">
               <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -226,8 +246,8 @@ const LivePlayer = ({
           </div>
         )}
         
-        {/* Overlay Controls */}
-        {!streamError && (
+        {/* Overlay Controls - only show for valid streams */}
+        {!streamError && hasValidStream && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300">
             <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
               <div className="flex items-center gap-2">
@@ -272,10 +292,13 @@ const LivePlayer = ({
           <div>
             <h3 className="font-semibold text-foreground">{title}</h3>
             <p className="text-sm text-muted-foreground">
-              {streamError ? 'Stream offline' : isLive ? 'Broadcasting live from Myanmar' : 'Video content'}
+              {streamError ? 'Stream offline' : hasValidStream ? 
+                (isLive ? 'Broadcasting live from Myanmar' : 'Video content') : 
+                'Stream configuration needed'
+              }
             </p>
           </div>
-          {isLive && !streamError && (
+          {isLive && !streamError && hasValidStream && (
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
               <span className="text-xs text-muted-foreground">LIVE</span>
