@@ -14,7 +14,132 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subscribers: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          subscribed: boolean
+          subscription_end: string | null
+          subscription_tier: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          subscribed?: boolean
+          subscription_end?: string | null
+          subscription_tier?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          subscribed?: boolean
+          subscription_end?: string | null
+          subscription_tier?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      video_progress: {
+        Row: {
+          created_at: string
+          id: number
+          last_watched_at: string
+          progress_seconds: number
+          thumbnail_url: string | null
+          title: string | null
+          total_duration_seconds: number
+          user_id: string
+          video_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          last_watched_at?: string
+          progress_seconds?: number
+          thumbnail_url?: string | null
+          title?: string | null
+          total_duration_seconds?: number
+          user_id: string
+          video_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          last_watched_at?: string
+          progress_seconds?: number
+          thumbnail_url?: string | null
+          title?: string | null
+          total_duration_seconds?: number
+          user_id?: string
+          video_id?: string
+        }
+        Relationships: []
+      }
+      watchlists: {
+        Row: {
+          created_at: string
+          id: number
+          item_id: string
+          item_type: string
+          source_url: string | null
+          thumbnail_url: string | null
+          title: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          item_id: string
+          item_type: string
+          source_url?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          item_id?: string
+          item_type?: string
+          source_url?: string | null
+          thumbnail_url?: string | null
+          title?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
